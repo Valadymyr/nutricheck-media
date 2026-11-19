@@ -1,0 +1,111 @@
+name: YouTube Shorts publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "media/**.mp4"
+      - "media/**.json"
+  workflow_dispatch:
+    inputs:
+      file:
+        description: "Відео для публікації, напр. media/2026-11-19-e250-bot.mp4 (поруч має бути .json)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+# Не запускати дві публікації паралельно — інакше конфлікт при коміті youtube_id
+concurrency:
+  group: youtube-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Select videos
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          INPUT_FILE: ${{ inputs.file }}
+        run: |
+          set -euo pipefail
+          : > candidates.txt
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            f="${INPUT_FILE#./}"
+            case "$f" in
+              media/*.mp4|media/*.json) ;;
+              *) echo "::error::file має бути в media/ і закінчуватись на .mp4 або .json"; exit 1 ;;
+            esac
+            case "$f" in *..*) echo "::error::неприпустимий шлях"; exit 1 ;; esac
+            echo "${f%.*}.mp4" >> candidates.txt
+          else
+            if [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+               && git fetch --depth=1 origin "$BEFORE" 2>/dev/null; then
+              git diff --name-only --diff-filter=AMR "$BEFORE" "$AFTER" > changed.txt
+            else
+              git diff-tree --no-commit-id --name-only --diff-filter=AMR -r "$AFTER" > changed.txt
+            fi
+            grep -E '^media/.+\.(mp4|json)$' changed.txt | sed -E 's/\.(mp4|json)$/.mp4/' | sort -u > candidates.txt || true
+          fi
+          # лише пари, де існують і .mp4, і .json
+          : > videos.txt
+          while IFS= read -r v; do
+            [ -f "$v" ] && [ -f "${v%.mp4}.json" ] && echo "$v" >> videos.txt || echo "пропуск $v: немає пари mp4+json"
+          done < candidates.txt
+          echo "Кандидати:"; cat videos.txt || true
+          if [ -s videos.txt ]; then echo "any=true" >> "$GITHUB_OUTPUT"; else echo "any=false" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-python@v5
+        if: steps.select.outputs.any == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements-youtube.txt
+
+      - name: Install dependencies
+        if: steps.select.outputs.any == 'true'
+        run: pip install -r scripts/requirements-youtube.txt
+
+      - name: Upload to YouTube
+        id: upload
+        if: steps.select.outputs.any == 'true'
+        env:
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          FLAG=""
+          # при push — лише відео з "youtube": true; ручний запуск — явний намір
+          [ "$EVENT" = "push" ] && FLAG="--require-flag"
+          mapfile -t VIDEOS < videos.txt
+          python3 scripts/yt_upload.py $FLAG "${VIDEOS[@]}"
+
+      - name: Commit youtube_id
+        # навіть якщо одне з відео впало — зберегти id тих, що вже завантажились
+        if: always() && steps.select.outputs.any == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add media/*.json
+          if git diff --cached --quiet; then
+            echo "Немає змін для коміту"; exit 0
+          fi
+          git commit -m "YouTube: додано youtube_id [skip ci]"
+          for i in 1 2 3 4; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            sleep $((i * 5))
+          done
+          echo "::error::не вдалося запушити youtube_id"; exit 1
