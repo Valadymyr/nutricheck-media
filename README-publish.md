@@ -49,5 +49,3 @@ Workflow `.github/workflows/youtube-publish.yml` вантажить відео �
 - Після успіху бот дописує в JSON `youtube_id`; повторно таке відео не вантажиться.
 
 Ручний запуск: **Actions → YouTube Shorts publish → Run workflow**, поле `file` = `media/<name>.mp4`.
-
-> Відео з API-проєктів без [аудиту YouTube](https://support.google.com/youtube/contact/yt_api_form) можуть автоматично ставати private. Якщо так — подайте форму аудиту.
