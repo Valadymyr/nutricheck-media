@@ -1,0 +1,6 @@
+# OAuth-облікові дані YouTube — ніколи не комітити
+client_secret*.json
+token*.json
+
+__pycache__/
+*.pyc
