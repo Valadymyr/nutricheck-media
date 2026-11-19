@@ -1,0 +1,14 @@
+{
+  "youtube": true,
+  "title": "Перевір склад продукту прямо в Telegram",
+  "description": "NutriCheck тепер у Telegram: надішли штрихкод або фото складу й отримай оцінку продукту з поясненнями.\n\nПеревір будь-який продукт безкоштовно: @NutriCheckUA_bot у Telegram.\n\nОцінка за даними етикеток. Не є медичною порадою.",
+  "tags": [
+    "NutriCheck",
+    "склад продуктів",
+    "сканер етикеток",
+    "Telegram бот"
+  ],
+  "privacyStatus": "public",
+  "containsSyntheticMedia": true,
+  "publishAt": "2026-11-22T16:00:00Z"
+}
