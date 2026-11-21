@@ -140,7 +140,7 @@ def pod_card(d, out):
     W, H = 1080, 1350
     img = Image.new("RGB", (W, H), BG)
     dr = ImageDraw.Draw(img)
-    header(dr, W, "Продукт дня")
+    header(dr, W, d.get("title") or "Продукт дня")
     y = 170
     for line in wrap(dr, d["name"], font(54, True), W - 120)[:3]:
         dr.text((60, y), line, font=font(54, True), fill=INK)
