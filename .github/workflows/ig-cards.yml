@@ -1,0 +1,70 @@
+# Картки Instagram з фото товару.
+# Щоденне завдання пушить instagram/YYYY-MM-DD/in.json (дані з бази NutriCheck + image_url фото товару),
+# а тут GitHub завантажує фото і малює pod.jpg, quiz_q.jpg, quiz_a.jpg (scripts/ig_card.py) і комітить їх у ту саму папку.
+# Хмарне середовище завдання не має доступу до сайтів магазинів, тому фото тягне саме GitHub.
+name: Instagram cards
+
+on:
+  push:
+    branches: [main]
+    paths: ["instagram/*/in.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ig-cards
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Шрифти й Pillow
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq fonts-dejavu-core >/dev/null
+          pip install --quiet pillow
+
+      - name: Які in.json змінились
+        id: changed
+        run: |
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            files=$(git diff --name-only HEAD~1 HEAD -- 'instagram/*/in.json' || true)
+          else
+            files=""
+          fi
+          # ручний запуск або нема попереднього коміту — усі in.json без готових карток
+          if [ -z "$files" ]; then
+            files=$(for f in instagram/*/in.json; do d=$(dirname "$f"); [ -f "$d/pod.jpg" ] || echo "$f"; done)
+          fi
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"; echo "$files" >> "$GITHUB_OUTPUT"; echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "Змінені: $files"
+
+      - name: Малюємо картки
+        if: steps.changed.outputs.files != ''
+        run: |
+          set -e
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            [ -f "$f" ] || continue
+            d=$(dirname "$f")
+            python3 scripts/ig_card.py "$f" "$d" 2> "$d/render.log" || { cat "$d/render.log"; exit 1; }
+            cat "$d/render.log"
+            # позначка: чи вдалося підтягнути фото (photo_fail у лозі = картка без фото)
+            if grep -q photo_fail "$d/render.log"; then echo "no_photo" > "$d/cards.ok"; else echo "photo" > "$d/cards.ok"; fi
+            rm -f "$d/render.log"
+          done <<< "${{ steps.changed.outputs.files }}"
+
+      - name: Коміт
+        run: |
+          git config user.name "nutricheck-bot"
+          git config user.email "nutricheck-bot@users.noreply.github.com"
+          git add instagram
+          if git diff --cached --quiet; then echo "нічого комітити"; exit 0; fi
+          git commit -m "instagram: картки з фото (GitHub Actions)"
+          for i in 1 2 3; do git pull --rebase -q && git push && break || sleep 5; done
