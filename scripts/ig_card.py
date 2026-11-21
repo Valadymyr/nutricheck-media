@@ -171,7 +171,7 @@ def pod_card(d, out):
         dr.text((60, y), "Що помітно на етикетці:", font=font(38, True), fill=INK)
         y += 64
         for n in notes[:3]:
-            if y > H - 230:
+            if y > H - 200:
                 break
             mark = (30, 158, 90) if n.get("t") == "+" else (234, 88, 12) if n.get("t") == "-" else MUTED
             for i, line in enumerate(wrap(dr, n["text"], font(36), W - 170)[:2]):
